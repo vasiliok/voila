@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "AutoFrench", targets: ["AutoFrench"]),
         .executable(name: "autofrench", targets: ["AutoFrenchCLI"]),
+        .executable(name: "AutoFrenchMenu", targets: ["AutoFrenchMenu"]),
     ],
     targets: [
         .target(
@@ -17,9 +18,17 @@ let package = Package(
             name: "AutoFrenchCLI",
             dependencies: ["AutoFrench"]
         ),
+        .executableTarget(
+            name: "AutoFrenchMenu",
+            dependencies: ["AutoFrench"]
+        ),
         .testTarget(
             name: "AutoFrenchTests",
             dependencies: ["AutoFrench"]
+        ),
+        .testTarget(
+            name: "AutoFrenchMenuTests",
+            dependencies: ["AutoFrenchMenu"]
         ),
     ]
 )

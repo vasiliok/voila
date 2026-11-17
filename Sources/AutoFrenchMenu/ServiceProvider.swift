@@ -1,0 +1,28 @@
+import AppKit
+import AutoFrench
+
+/// Backs the "Restore French Accents" entry that macOS shows in the
+/// right-click Services menu for selected text. The method name must match
+/// NSMessage in Info.plist.
+@MainActor
+final class ServiceProvider: NSObject {
+    private let completer: Completer
+
+    init(completer: Completer) {
+        self.completer = completer
+    }
+
+    @objc(restoreAccents:userData:error:)
+    func restoreAccents(
+        _ pasteboard: NSPasteboard,
+        userData: String?,
+        error: AutoreleasingUnsafeMutablePointer<NSString>
+    ) {
+        guard let text = pasteboard.string(forType: .string) else {
+            error.pointee = "AutoFrench: the selection contains no text." as NSString
+            return
+        }
+        pasteboard.clearContents()
+        pasteboard.setString(completer.restore(text), forType: .string)
+    }
+}

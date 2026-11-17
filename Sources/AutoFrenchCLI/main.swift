@@ -9,6 +9,7 @@ func fail(_ message: String) -> Never {
 let usage = """
 usage: autofrench complete <prefix> [-n N]   ranked completions for a prefix
        autofrench restore <text...>          restore accents in text
+       autofrench suggest <word>             close matches for a misspelled word
        autofrench                            interactive mode
 """
 
@@ -42,6 +43,16 @@ case "restore":
     guard !args.isEmpty else { fail(usage) }
     print(completer.restore(args.joined(separator: " ")))
 
+case "suggest":
+    args.removeFirst()
+    guard args.count == 1 else { fail(usage) }
+    if completer.isKnown(args[0]) {
+        print("\(completer.accentuate(args[0])) (known word)")
+    } else {
+        let suggestions = completer.suggestions(for: args[0])
+        print(suggestions.isEmpty ? "no suggestions" : suggestions.joined(separator: "\n"))
+    }
+
 case "-h", "--help":
     print(usage)
 
@@ -54,7 +65,11 @@ case nil:
         print("fr> ", terminator: "")
         guard let line = readLine(), line != "exit" else { break }
         guard !line.isEmpty else { continue }
-        print("→ \(completer.restore(line))")
+        let restored = completer.restore(line)
+        print("→ \(restored)")
+        for misspelling in completer.misspellings(in: restored) {
+            print("  ? \(misspelling.word) → " + misspelling.suggestions.joined(separator: ", "))
+        }
         if let lastWord = line.split(whereSeparator: { !$0.isLetter }).last {
             let completions = completer.complete(String(lastWord), limit: 5)
             if completions.count > 1 {
