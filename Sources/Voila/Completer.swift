@@ -50,6 +50,11 @@ public struct Completer: Sendable {
     /// log10 of the corpus size, to turn frequencies into probabilities.
     private let log10Total: Double
 
+    /// The user's own rules, by folded typed word: "ajurdui" → "aujourd'hui".
+    public private(set) var variants: [String: String] = [:]
+    /// Folded words of every variant's replacement, which count as known.
+    private var variantWords: Set<String> = []
+
     public init(words: [(word: String, frequency: UInt64)]) {
         var built: [Entry] = []
         built.reserveCapacity(words.count)
@@ -103,7 +108,7 @@ public struct Completer: Sendable {
     /// Lowercases and strips everything the folded keys don't carry:
     /// diacritics, the ligatures Unicode folding leaves alone, apostrophes
     /// and hyphens ("aujourdhui" finds "aujourd'hui", "peutetre" "peut-être").
-    static func fold(_ word: String) -> String {
+    public static func fold(_ word: String) -> String {
         unligature(word.lowercased(with: locale))
             .folding(options: .diacriticInsensitive, locale: locale)
             .filter { !joiners.contains($0) }
@@ -117,6 +122,31 @@ public struct Completer: Sendable {
             .replacingOccurrences(of: "æ", with: "ae")
     }
 
+    // MARK: - User variants
+
+    /// Replaces the user's own rules. Each typed word, matched ignoring case
+    /// and accents, is always written as its replacement, ahead of the
+    /// dictionary; replacements are never flagged as misspellings. A rule
+    /// whose replacement equals the typed word just adds that word.
+    public mutating func setVariants(_ rules: [(typed: String, replacement: String)]) {
+        variants = [:]
+        variantWords = []
+        for rule in rules {
+            let key = Self.fold(rule.typed.trimmingCharacters(in: .whitespaces))
+            let replacement = rule.replacement.trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty, !replacement.isEmpty else { continue }
+            variants[key] = replacement
+            for word in replacement.split(whereSeparator: { !$0.isLetter && !Self.joiners.contains($0) }) {
+                variantWords.insert(Self.fold(String(word)))
+            }
+        }
+    }
+
+    /// The user's replacement for `word`, in the case it was typed.
+    private func variant(for word: String) -> String? {
+        variants[Self.fold(word)].map { Self.matchCase(of: word, to: $0) }
+    }
+
     // MARK: - Completion
 
     /// Words starting with `prefix` (accent-insensitively), most frequent
@@ -126,6 +156,8 @@ public struct Completer: Sendable {
     public func complete(_ prefix: String, limit: Int = 10) -> [Completion] {
         guard limit > 0, !prefix.isEmpty else { return [] }
         let key = Self.fold(prefix)
+        // The user's own words come first: they asked for them.
+        let own = Set(variants.values).filter { Self.fold($0).hasPrefix(key) }.sorted()
         var matches: [Entry] = []
         for i in lowerBound(of: key)..<entries.count {
             guard entries[i].key.hasPrefix(key) else { break }
@@ -134,9 +166,13 @@ public struct Completer: Sendable {
             matches.append(entries[i])
         }
         matches.sort { $0.frequency > $1.frequency }
-        return matches.prefix(limit).map {
-            Completion(word: Self.matchCase(of: prefix, to: $0.word), frequency: $0.frequency)
+        let ownCompletions = own.map {
+            Completion(word: Self.matchCase(of: prefix, to: $0), frequency: 0)
         }
+        let dictionary = matches.lazy
+            .filter { entry in !own.contains { Self.fold($0) == entry.key } }
+            .map { Completion(word: Self.matchCase(of: prefix, to: $0.word), frequency: $0.frequency) }
+        return Array((ownCompletions + dictionary).prefix(limit))
     }
 
     /// Index of the first entry whose key is >= `key`.
@@ -156,6 +192,7 @@ public struct Completer: Sendable {
     /// is kept ("a" never becomes "à"), and so is any word the restoration
     /// rule can't clearly improve. Unknown words come back unchanged.
     public func accentuate(_ word: String) -> String {
+        if let own = variant(for: word) { return own }
         let lowered = word.lowercased(with: Self.locale)
         // Elision first: the corpus holds typos like "cétait" that would
         // otherwise claim "cetait" before it can become "c'était".
@@ -261,7 +298,8 @@ public struct Completer: Sendable {
     /// ("qu'il", "peut-être") are known when each part is.
     public func isKnown(_ word: String) -> Bool {
         let key = Self.fold(word)
-        if key.isEmpty || keys.contains(key) { return true }
+        if key.isEmpty || keys.contains(key) || variantWords.contains(key)
+            || variants[key] != nil { return true }
         let parts = word.split(whereSeparator: { Self.joiners.contains($0) })
         guard parts.count > 1 else { return false }
         return parts.allSatisfy { $0.count == 1 || keys.contains(Self.fold(String($0))) }
@@ -275,7 +313,10 @@ public struct Completer: Sendable {
     /// one ("fame" → "femme"). Empty when there is nothing to offer.
     public func suggestions(for word: String, limit: Int = 5) -> [String] {
         guard limit > 0 else { return [] }
+        if let own = variant(for: word) { return own == word ? [] : [own] }
         let typedKey = Self.fold(word)
+        // The user's own words are never suspect.
+        if variantWords.contains(typedKey) { return [] }
         // Each candidate is scored as log10 of its probability: corpus
         // frequency, minus a penalty per edit or per extra word.
         var scored: [Candidate]

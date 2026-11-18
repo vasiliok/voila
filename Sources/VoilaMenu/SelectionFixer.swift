@@ -7,11 +7,11 @@ import Carbon.HIToolbox
 /// user's clipboard back. Posting keys needs Accessibility permission.
 @MainActor
 final class SelectionFixer {
-    private let completer: Completer
+    private let store: VariantStore
     private var isBusy = false
 
-    init(completer: Completer) {
-        self.completer = completer
+    init(store: VariantStore) {
+        self.store = store
     }
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
@@ -57,6 +57,7 @@ final class SelectionFixer {
             return
         }
 
+        let completer = store.completer
         var fixed = completer.restore(text)
         let misspellings = completer.misspellings(in: fixed).prefix(Self.maxQuestions)
         if !misspellings.isEmpty {
@@ -64,8 +65,16 @@ final class SelectionFixer {
             NSApp.activate(ignoringOtherApps: true)
             var corrections: [(misspelling: Completer.Misspelling, replacement: String)] = []
             for misspelling in misspellings {
-                if let choice = SuggestionMenu.choose(for: misspelling, at: menuLocation) {
-                    corrections.append((misspelling, choice))
+                switch SuggestionMenu.choose(for: misspelling, at: menuLocation) {
+                case .replace(let word):
+                    corrections.append((misspelling, word))
+                case .alwaysReplace(let word):
+                    corrections.append((misspelling, word))
+                    store.add(typed: misspelling.word, replacement: word)
+                case .alwaysKeep:
+                    store.add(typed: misspelling.word, replacement: misspelling.word)
+                case .keep, nil:
+                    break
                 }
             }
             fixed = Completer.applying(corrections, to: fixed)

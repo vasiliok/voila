@@ -65,6 +65,12 @@ permission (System Settings → Privacy & Security → Accessibility). The build
 script signs with your Apple Development certificate when you have one, which
 keeps that permission across rebuilds.
 
+**My variants:** your own rules, in *Settings…*: "when I type `bjr`, write
+`bonjour`". They are matched ignoring case and accents, applied before the
+dictionary, and never flagged as typos. Write the same word on both sides to
+teach Voilà a word, such as a name. The suggestion menu's *Always Replace
+With* and *Always Keep* add variants in one click.
+
 The menu also has *Restore Accents in Clipboard*, *Launch at Login* and help.
 If the Services item doesn't show up, enable it (and optionally give it a
 shortcut) in System Settings → Keyboard → Keyboard Shortcuts → Services → Text.

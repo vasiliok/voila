@@ -43,6 +43,9 @@ final class ShortcutStore: ObservableObject {
 
 struct SettingsView: View {
     @ObservedObject var store: ShortcutStore
+    @ObservedObject var variants: VariantStore
+    @State private var newTyped = ""
+    @State private var newReplacement = ""
     @State private var isRecording = false
     @State private var monitor: Any?
     @State private var isTrusted = SelectionFixer.isTrusted
@@ -85,11 +88,65 @@ struct SettingsView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider().padding(.vertical, 6)
+            variantsSection
         }
         .padding(20)
-        .frame(width: 440)
+        .frame(width: 480)
         .onReceive(trustTimer) { _ in isTrusted = SelectionFixer.isTrusted }
         .onDisappear(perform: stopRecording)
+    }
+
+    private var variantsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("My variants").font(.headline)
+            HStack {
+                TextField("I type", text: $newTyped)
+                Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                TextField("Voilà writes", text: $newReplacement)
+                    .onSubmit(addVariant)
+                Button("Add", action: addVariant)
+                    .disabled(!VariantStore.isValid(typed: newTyped, replacement: newReplacement))
+            }
+            if variants.variants.isEmpty {
+                Text("No variants yet.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+            } else {
+                List(variants.variants) { variant in
+                    HStack {
+                        Text(variant.typed)
+                        Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                        Text(variant.replacement)
+                        Spacer()
+                        Button {
+                            variants.remove(variant)
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Remove this variant")
+                    }
+                }
+                .frame(height: 140)
+            }
+            Text("""
+                Matched ignoring case and accents, and applied before the dictionary. \
+                Write the same word on both sides to teach Voilà a word, like a name. \
+                The suggestion menu's “Always…” items add variants too.
+                """)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func addVariant() {
+        if variants.add(typed: newTyped, replacement: newReplacement) {
+            newTyped = ""
+            newReplacement = ""
+        }
     }
 
     private func startRecording() {

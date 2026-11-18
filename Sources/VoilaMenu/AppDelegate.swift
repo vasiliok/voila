@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
-    private var completer: Completer?
+    private var variants: VariantStore?
     private var serviceProvider: ServiceProvider?
     private var fixer: SelectionFixer?
     private var shortcuts: ShortcutStore?
@@ -18,13 +18,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            let completer = try Self.loadCompleter()
-            self.completer = completer
-            let provider = ServiceProvider(completer: completer)
+            let variants = VariantStore(completer: try Self.loadCompleter())
+            self.variants = variants
+            let provider = ServiceProvider(store: variants)
             serviceProvider = provider
             NSApp.servicesProvider = provider
             NSUpdateDynamicServices()
-            let fixer = SelectionFixer(completer: completer)
+            let fixer = SelectionFixer(store: variants)
             self.fixer = fixer
             shortcuts = ShortcutStore { fixer.fixSelection() }
         } catch {
@@ -75,10 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showSettings() {
-        guard let shortcuts else { return }
+        guard let shortcuts, let variants else { return }
         if settingsWindow == nil {
             let window = NSWindow(
-                contentViewController: NSHostingController(rootView: SettingsView(store: shortcuts)))
+                contentViewController: NSHostingController(rootView: SettingsView(store: shortcuts, variants: variants)))
             window.title = "Voilà Settings"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
@@ -91,12 +91,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func restoreClipboard() {
         let pasteboard = NSPasteboard.general
-        guard let completer, let text = pasteboard.string(forType: .string) else {
+        guard let variants, let text = pasteboard.string(forType: .string) else {
             NSSound.beep()
             return
         }
         pasteboard.clearContents()
-        pasteboard.setString(completer.restore(text), forType: .string)
+        pasteboard.setString(variants.completer.restore(text), forType: .string)
     }
 
     @objc private func toggleLaunchAtLogin() {

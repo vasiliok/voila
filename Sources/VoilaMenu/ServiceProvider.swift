@@ -6,10 +6,10 @@ import Voila
 /// NSMessage in Info.plist.
 @MainActor
 final class ServiceProvider: NSObject {
-    private let completer: Completer
+    private let store: VariantStore
 
-    init(completer: Completer) {
-        self.completer = completer
+    init(store: VariantStore) {
+        self.store = store
     }
 
     @objc(restoreAccents:userData:error:)
@@ -23,6 +23,6 @@ final class ServiceProvider: NSObject {
             return
         }
         pasteboard.clearContents()
-        pasteboard.setString(completer.restore(text), forType: .string)
+        pasteboard.setString(store.completer.restore(text), forType: .string)
     }
 }

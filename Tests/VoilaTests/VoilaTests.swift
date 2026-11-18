@@ -289,3 +289,66 @@ private let completer = try! Completer.french()
         #expect(Completer.phonetic("ferme") != Completer.phonetic("feme"))
     }
 }
+
+@Suite struct VariantTests {
+    private func withVariants(_ rules: [(String, String)]) -> Completer {
+        var custom = completer
+        custom.setVariants(rules.map { (typed: $0.0, replacement: $0.1) })
+        return custom
+    }
+
+    @Test func replacesTypedWord() {
+        let custom = withVariants([("ajurdui", "aujourd'hui"), ("bjr", "bonjour")])
+        #expect(custom.restore("bjr, je viens ajurdui") == "bonjour, je viens aujourd'hui")
+    }
+
+    @Test func matchesIgnoringCaseAndAccentsAndKeepsTypedCase() {
+        let custom = withVariants([("tkt", "t'inquiète")])
+        #expect(custom.accentuate("TKT") == "T'INQUIÈTE")
+        #expect(custom.accentuate("Tkt") == "T'inquiète")
+        #expect(custom.accentuate("tkt") == "t'inquiète")
+    }
+
+    @Test func overridesTheDictionary() {
+        // The dictionary would make "a" stay "a"; the user wants otherwise.
+        let custom = withVariants([("fame", "fame")])
+        #expect(custom.suggestions(for: "fame").isEmpty)  // no longer suspect
+        #expect(withVariants([("francais", "francais")]).accentuate("francais") == "francais")
+    }
+
+    @Test func ownWordsAreKnownAndNeverFlagged() {
+        let custom = withVariants([("vasily", "Vasily"), ("pyrex", "Pyrex")])
+        #expect(custom.isKnown("Vasily"))
+        #expect(custom.misspellings(in: "Vasily achète du Pyrex").isEmpty)
+        #expect(!completer.misspellings(in: "Vasily achète du Pyrex").isEmpty)
+    }
+
+    @Test func multiWordReplacementWordsAreKnown() {
+        let custom = withVariants([("sava", "ça va")])
+        #expect(custom.restore("sava ?") == "ça va ?")
+        #expect(custom.misspellings(in: "ça va ?").isEmpty)
+    }
+
+    @Test func suggestsTheVariantFirst() {
+        #expect(withVariants([("ajurdui", "aujourd'hui")]).suggestions(for: "ajurdui")
+            == ["aujourd'hui"])
+    }
+
+    @Test func completesOwnWordsFirst() {
+        let custom = withVariants([("vas", "Vasily")])
+        #expect(custom.complete("vas").first?.word == "Vasily")
+        #expect(custom.complete("vas").map(\.word).filter { $0 == "Vasily" }.count == 1)
+    }
+
+    @Test func replacingRulesClearsOldOnes() {
+        var custom = withVariants([("bjr", "bonjour")])
+        custom.setVariants([])
+        #expect(custom.accentuate("bjr") == "bjr")
+        #expect(custom.variants.isEmpty)
+    }
+
+    @Test func ignoresBlankRules() {
+        let custom = withVariants([("", "x"), ("y", "  ")])
+        #expect(custom.variants.isEmpty)
+    }
+}
