@@ -45,6 +45,10 @@ public struct Completer: Sendable {
     private let entryScalars: [[Unicode.Scalar]]
     /// Each entry's phonetic key, parallel to `entries`.
     private let entryPhonetics: [[Unicode.Scalar]]
+    /// Combined frequency of every spelling that folds to a key.
+    private let frequencyByKey: [String: UInt64]
+    /// log10 of the corpus size, to turn frequencies into probabilities.
+    private let log10Total: Double
 
     public init(words: [(word: String, frequency: UInt64)]) {
         var built: [Entry] = []
@@ -71,6 +75,8 @@ public struct Completer: Sendable {
         self.keys = Set(built.map(\.key))
         self.entryScalars = built.map { Array($0.key.unicodeScalars) }
         self.entryPhonetics = built.map { Array(Self.phonetic($0.key).unicodeScalars) }
+        self.frequencyByKey = built.reduce(into: [:]) { $0[$1.key, default: 0] += $1.frequency }
+        self.log10Total = log10(Double(max(built.reduce(0) { $0 + $1.frequency }, 1)))
     }
 
     /// Loads the bundled French frequency dictionary (50k words).
@@ -262,12 +268,55 @@ public struct Completer: Sendable {
     }
 
     /// Known words within a few typing mistakes of an unknown `word` (a
-    /// missing, extra, wrong or swapped letter each count as one), closest
-    /// and most frequent first: "ajurdui" → "aujourd'hui". Empty when the
+    /// missing, extra, wrong or swapped letter each count as one), and the
+    /// words it may be several of run together, most likely first:
+    /// "ajurdui" → "aujourd'hui", "cestbon" → "c'est bon". Empty when the
     /// word is known or too short to guess from.
     public func suggestions(for word: String, limit: Int = 5) -> [String] {
         guard limit > 0, !isKnown(word) else { return [] }
         let typedKey = Self.fold(word)
+        // Each candidate is scored as log10 of its probability: corpus
+        // frequency, minus a penalty per edit or per extra word.
+        var scored = corrections(of: typedKey)
+        if let split = segmentation(of: typedKey) {
+            scored.append(split)
+        }
+        scored.sort { $0.score > $1.score }
+
+        var seenKeys: Set<String> = []
+        var result: [String] = []
+        for candidate in scored {
+            // Map corpus typos ("etre") to the spelling they stand for, and
+            // offer one spelling per folded key ("écoute", not also "ecoute").
+            let suggestion = candidate.isPhrase ? candidate.text : accentuate(candidate.text)
+            guard seenKeys.insert(Self.fold(suggestion)).inserted else { continue }
+            result.append(Self.matchCase(of: word, to: suggestion))
+            if result.count == limit { break }
+        }
+        return result
+    }
+
+    private struct Candidate {
+        let score: Double
+        let text: String
+        let isPhrase: Bool
+    }
+
+    /// Ten times rarer is worth one decade of log probability; one typing
+    /// mistake costs two, so closeness dominates and frequency breaks ties.
+    private static let editPenalty = 2.0
+    /// Splitting into one more word costs this much, so a single word wins
+    /// unless the split reads clearly better ("merci" over "mer si").
+    private static let splitPenalty = 1.0
+    /// Rarer corpus entries are mostly fragments ("aujourd") and noise, not
+    /// words to build phrases from.
+    private static let minimumPartFrequency: UInt64 = 500
+
+    private func logProbability(_ frequency: UInt64) -> Double {
+        log10(Double(max(frequency, 1))) - log10Total
+    }
+
+    private func corrections(of typedKey: String) -> [Candidate] {
         let typed = Array(typedKey.unicodeScalars)
         let typedPhonetic = Array(Self.phonetic(typedKey).unicodeScalars)
         let maxDistance = switch typed.count {
@@ -278,7 +327,7 @@ public struct Completer: Sendable {
         }
         guard maxDistance > 0 else { return [] }
 
-        var scored: [(score: Double, word: String)] = []
+        var result: [Candidate] = []
         for (index, entry) in entries.enumerated() where !entry.word.hasSuffix("'") {
             // Spelled-as-heard mistakes ("bocoup" for "beaucoup") are far
             // apart in letters but close in sound, so the closer wins. Sound
@@ -288,43 +337,124 @@ public struct Completer: Sendable {
             let heard = Self.editDistance(
                 typedPhonetic, entryPhonetics[index], limit: maxDistance - 1)
             guard let distance = [spelled, heard].compactMap({ $0 }).min() else { continue }
-            // Each edit costs more than a 10× frequency difference is worth
-            // (log10 * 0.5), so closeness dominates and frequency breaks ties.
-            let score = Double(distance) - 0.5 * log10(Double(max(entry.frequency, 1)))
-            scored.append((score, entry.word))
-        }
-        scored.sort { $0.score < $1.score }
-
-        var seenKeys: Set<String> = []
-        var result: [String] = []
-        for candidate in scored {
-            // Map corpus typos ("etre") to the spelling they stand for, and
-            // offer one spelling per folded key ("écoute", not also "ecoute").
-            let suggestion = accentuate(candidate.word)
-            guard seenKeys.insert(Self.fold(suggestion)).inserted else { continue }
-            result.append(Self.matchCase(of: word, to: suggestion))
-            if result.count == limit { break }
+            let score = logProbability(entry.frequency) - Self.editPenalty * Double(distance)
+            result.append(Candidate(score: score, text: entry.word, isPhrase: false))
         }
         return result
     }
 
+    /// The most likely way to read `typedKey` as several known words typed
+    /// without spaces: "silvousplait" → "s'il vous plaît". Nil when no split
+    /// into two or more frequent words exists.
+    private func segmentation(of typedKey: String) -> Candidate? {
+        let letters = Array(typedKey)
+        guard (4...40).contains(letters.count) else { return nil }
+        // best[i]: the best reading of the first i letters.
+        var best = [(score: Double, words: [String])?](repeating: nil, count: letters.count + 1)
+        best[0] = (0, [])
+        for end in 1...letters.count {
+            // The whole input as one piece isn't a split.
+            for start in max(0, end - 25)..<end where end - start < letters.count {
+                guard let before = best[start],
+                    let part = phrasePart(String(letters[start..<end])) else { continue }
+                let score = before.score + part.score
+                    - (before.words.isEmpty ? 0 : Self.splitPenalty)
+                if score > best[end]?.score ?? -.infinity {
+                    best[end] = (score, before.words + [part.word])
+                }
+            }
+        }
+        guard let reading = best[letters.count], reading.words.count > 1 else { return nil }
+        return Candidate(
+            score: reading.score, text: reading.words.joined(separator: " "), isPhrase: true)
+    }
+
+    /// One word of a split, restored ("cest" → "c'est"), with its log
+    /// probability; nil for single letters other than "a" and "y", and for
+    /// fragments too rare to trust.
+    private func phrasePart(_ key: String) -> (word: String, score: Double)? {
+        guard key.count > 1 || key == "a" || key == "y" else { return nil }
+        let word = accentuate(key)
+        // A rebuilt contraction has no frequency of its own: "c'est" is as
+        // common as "est".
+        let counted = word.split(separator: "'").last.map(String.init) ?? word
+        let frequency = max(frequencyByKey[Self.fold(counted)] ?? 0, frequencyByWord[word] ?? 0)
+        guard frequency >= Self.minimumPartFrequency else { return nil }
+        return (word, logProbability(frequency))
+    }
+
     /// Unknown words in `text` with their suggestions, in text order. Words
-    /// with no close match are left out: there is nothing to offer.
+    /// with no close match are left out: there is nothing to offer. A word
+    /// typed in two pieces ("aujour dhui") is reported once, spanning both
+    /// pieces, with the joined word first.
     public func misspellings(in text: String, limit: Int = 5) -> [Misspelling] {
+        let words = Self.words(in: text)
         var result: [Misspelling] = []
+        var index = 0
+        while index < words.count {
+            let (range, word) = words[index]
+            guard !isKnown(word) else {
+                index += 1
+                continue
+            }
+            if index + 1 < words.count, let joined = joinedWord(words[index], words[index + 1], in: text) {
+                let span = range.lowerBound..<words[index + 1].range.upperBound
+                result.append(Misspelling(
+                    range: span, word: String(text[span]),
+                    suggestions: joinedFirst(joined, suggestions(for: word, limit: limit), limit)))
+                index += 2
+                continue
+            }
+            if index > 0, !result.contains(where: { $0.range.overlaps(words[index - 1].range) }),
+                let joined = joinedWord(words[index - 1], words[index], in: text) {
+                let span = words[index - 1].range.lowerBound..<range.upperBound
+                result.append(Misspelling(
+                    range: span, word: String(text[span]),
+                    suggestions: joinedFirst(joined, suggestions(for: word, limit: limit), limit)))
+                index += 1
+                continue
+            }
+            let suggestions = suggestions(for: word, limit: limit)
+            if !suggestions.isEmpty {
+                result.append(Misspelling(range: range, word: word, suggestions: suggestions))
+            }
+            index += 1
+        }
+        return result
+    }
+
+    /// The known word two neighbours make when the space between them is
+    /// removed ("aujour" + "dhui" → "aujourd'hui"), in the case of the first.
+    private func joinedWord(
+        _ first: (range: Range<String.Index>, word: String),
+        _ second: (range: Range<String.Index>, word: String),
+        in text: String
+    ) -> String? {
+        guard text[first.range.upperBound..<second.range.lowerBound] == " " else { return nil }
+        let key = Self.fold(first.word + second.word)
+        guard (frequencyByKey[key] ?? 0) >= Self.minimumPartFrequency else { return nil }
+        return accentuate(first.word + second.word)
+    }
+
+    private func joinedFirst(_ joined: String, _ others: [String], _ limit: Int) -> [String] {
+        Array(([joined] + others.filter { $0 != joined }).prefix(limit))
+    }
+
+    /// Runs of letters, joined across ' ’ - when a letter follows.
+    private static func words(in text: String) -> [(range: Range<String.Index>, word: String)] {
+        var result: [(range: Range<String.Index>, word: String)] = []
         var index = text.startIndex
         while index < text.endIndex {
             guard text[index].isLetter else {
                 index = text.index(after: index)
                 continue
             }
-            // A word is a run of letters, joined across ' ’ - when a letter follows.
             let start = index
             var end = index
             while end < text.endIndex {
                 if text[end].isLetter {
                     end = text.index(after: end)
-                } else if Self.joiners.contains(text[end]),
+                } else if joiners.contains(text[end]),
                     case let next = text.index(after: end), next < text.endIndex,
                     text[next].isLetter {
                     end = next
@@ -332,11 +462,7 @@ public struct Completer: Sendable {
                     break
                 }
             }
-            let word = String(text[start..<end])
-            let suggestions = suggestions(for: word, limit: limit)
-            if !suggestions.isEmpty {
-                result.append(Misspelling(range: start..<end, word: word, suggestions: suggestions))
-            }
+            result.append((start..<end, String(text[start..<end])))
             index = end
         }
         return result

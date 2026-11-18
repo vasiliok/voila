@@ -14,7 +14,9 @@ completes words. Type plain ASCII, get proper French:
   contractions (`lune`, `quelle`, `son`) are left alone.
 - **Typo suggestions** — for words the dictionary doesn't know, the closest
   known words by spelling or by sound: `ajurdui` → `aujourd'hui`,
-  `bonjur` → `bonjour`, `bocoup` → `beaucoup`.
+  `bonjur` → `bonjour`, `bocoup` → `beaucoup`. Also words typed together
+  (`cestbon` → `c'est bon`, `jenesaispas` → `je ne sais pas`) and a word
+  typed in two pieces (`aujour dhui` → `aujourd'hui`).
 - **Accent-insensitive completion** — `ecol` suggests `école` first, ranked by
   corpus frequency.
 

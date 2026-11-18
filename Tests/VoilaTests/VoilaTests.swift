@@ -206,3 +206,52 @@ private let completer = try! Completer.french()
         #expect(Completer.phonetic("photo") == Completer.phonetic("foto"))
     }
 }
+
+@Suite struct SeveralWordsTests {
+    @Test(arguments: [
+        ("cestbon", "c'est bon"),
+        ("Cestbon", "C'est bon"),
+        ("jenesaispas", "je ne sais pas"),
+        ("jevousaime", "je vous aime"),
+    ])
+    func splitsWordsTypedTogether(typed: String, expected: String) {
+        #expect(completer.suggestions(for: typed).first == expected)
+    }
+
+    @Test func offersSplitAlongsideCloseWord() {
+        #expect(completer.suggestions(for: "silvousplait").contains("s'il vous plait"))
+    }
+
+    @Test(arguments: ["mersi", "bonjur", "chapeu", "anglai"])
+    func singleWordFixBeatsSplit(typed: String) {
+        // "mer si", "chape u"... must not outrank the obvious one-word fix.
+        let first = completer.suggestions(for: typed).first ?? ""
+        #expect(!first.contains(" "))
+    }
+
+    @Test func joinsWordTypedInTwoPieces() throws {
+        let text = "il viendra aujour dhui"
+        let found = try #require(completer.misspellings(in: text).first)
+        #expect(String(text[found.range]) == "aujour dhui")
+        #expect(found.suggestions.first == "aujourd'hui")
+    }
+
+    @Test func joinsWithPreviousPiece() throws {
+        let text = "au jourdhui je vais"
+        let found = try #require(completer.misspellings(in: text).first)
+        #expect(found.word == "au jourdhui")
+        #expect(found.suggestions.first == "aujourd'hui")
+        #expect(found.suggestions.count == Set(found.suggestions).count)
+    }
+
+    @Test func appliesJoinedCorrection() throws {
+        let text = "il viendra aujour dhui"
+        let found = try #require(completer.misspellings(in: text).first)
+        #expect(Completer.applying([(found, found.suggestions[0])], to: text)
+            == "il viendra aujourd'hui")
+    }
+
+    @Test func leavesKnownNeighboursAlone() {
+        #expect(completer.misspellings(in: "bon jour à tous").isEmpty)
+    }
+}
