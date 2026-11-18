@@ -270,16 +270,22 @@ public struct Completer: Sendable {
     /// Known words within a few typing mistakes of an unknown `word` (a
     /// missing, extra, wrong or swapped letter each count as one), and the
     /// words it may be several of run together, most likely first:
-    /// "ajurdui" → "aujourd'hui", "cestbon" → "c'est bon". Empty when the
-    /// word is known or too short to guess from.
+    /// "ajurdui" → "aujourd'hui", "cestbon" → "c'est bon". A known word
+    /// gets suggestions only when it is probably a typo of a far more common
+    /// one ("fame" → "femme"). Empty when there is nothing to offer.
     public func suggestions(for word: String, limit: Int = 5) -> [String] {
-        guard limit > 0, !isKnown(word) else { return [] }
+        guard limit > 0 else { return [] }
         let typedKey = Self.fold(word)
         // Each candidate is scored as log10 of its probability: corpus
         // frequency, minus a penalty per edit or per extra word.
-        var scored = corrections(of: typedKey)
-        if let split = segmentation(of: typedKey) {
-            scored.append(split)
+        var scored: [Candidate]
+        if isKnown(word) {
+            scored = commonNeighbours(of: word)
+        } else {
+            scored = corrections(of: typedKey)
+            if let split = segmentation(of: typedKey) {
+                scored.append(split)
+            }
         }
         scored.sort { $0.score > $1.score }
 
@@ -300,6 +306,26 @@ public struct Completer: Sendable {
         let score: Double
         let text: String
         let isPhrase: Bool
+        var frequency: UInt64 = 0
+    }
+
+    /// A known word this rare, typed without accents, is suspect when a
+    /// word one mistake away is `dominanceRatio` times more common:
+    /// "fame" (241) next to "femme" (233 000).
+    private static let suspectBelow: UInt64 = 1000
+    private static let dominanceRatio: UInt64 = 200
+
+    /// Far more common words one mistake (or the same sound) away from a
+    /// rare known word; empty for words that are common or typed with
+    /// accents, which the user evidently meant.
+    private func commonNeighbours(of word: String) -> [Candidate] {
+        let lowered = word.lowercased(with: Self.locale)
+        let key = Self.fold(lowered)
+        guard lowered == key, key.count >= 3,
+            let frequency = frequencyByKey[key], frequency < Self.suspectBelow else { return [] }
+        return corrections(of: key, maxDistance: 1).filter {
+            $0.frequency >= frequency * Self.dominanceRatio
+        }
     }
 
     /// Ten times rarer is worth one decade of log probability; one typing
@@ -316,15 +342,10 @@ public struct Completer: Sendable {
         log10(Double(max(frequency, 1))) - log10Total
     }
 
-    private func corrections(of typedKey: String) -> [Candidate] {
+    private func corrections(of typedKey: String, maxDistance limit: Int? = nil) -> [Candidate] {
         let typed = Array(typedKey.unicodeScalars)
         let typedPhonetic = Array(Self.phonetic(typedKey).unicodeScalars)
-        let maxDistance = switch typed.count {
-        case ..<3: 0
-        case 3...4: 1
-        case 5...6: 2
-        default: 3
-        }
+        let maxDistance = limit ?? Self.allowedMistakes(forLength: typed.count)
         guard maxDistance > 0 else { return [] }
 
         var result: [Candidate] = []
@@ -338,9 +359,21 @@ public struct Completer: Sendable {
                 typedPhonetic, entryPhonetics[index], limit: maxDistance - 1)
             guard let distance = [spelled, heard].compactMap({ $0 }).min() else { continue }
             let score = logProbability(entry.frequency) - Self.editPenalty * Double(distance)
-            result.append(Candidate(score: score, text: entry.word, isPhrase: false))
+            result.append(Candidate(
+                score: score, text: entry.word, isPhrase: false, frequency: entry.frequency))
         }
         return result
+    }
+
+    /// Short words allow fewer mistakes: one wrong letter in three makes
+    /// almost anything match.
+    private static func allowedMistakes(forLength length: Int) -> Int {
+        switch length {
+        case ..<3: 0
+        case 3...4: 1
+        case 5...6: 2
+        default: 3
+        }
     }
 
     /// The most likely way to read `typedKey` as several known words typed
@@ -394,6 +427,10 @@ public struct Completer: Sendable {
         while index < words.count {
             let (range, word) = words[index]
             guard !isKnown(word) else {
+                let alternatives = suggestions(for: word, limit: limit)
+                if !alternatives.isEmpty {
+                    result.append(Misspelling(range: range, word: word, suggestions: alternatives))
+                }
                 index += 1
                 continue
             }
@@ -472,7 +509,16 @@ public struct Completer: Sendable {
     /// alike collapse to one spelling, silent letters drop.
     /// "beaucoup" and "bocoup" both give "bokoup".
     static func phonetic(_ key: String) -> String {
-        var text = key
+        // Doubled letters first, so "femme" reads like "feme" before "em"
+        // is rewritten.
+        var text = ""
+        for character in key where text.last != character {
+            text.append(character)
+        }
+        // -er and -ez sound like é only at the end ("parler"), not in "ferme".
+        if text.hasSuffix("er") || text.hasSuffix("ez") {
+            text = String(text.dropLast(2)) + "e"
+        }
         for (group, sound) in phoneticGroups {
             text = text.replacingOccurrences(of: group, with: sound)
         }
@@ -489,7 +535,7 @@ public struct Completer: Sendable {
     /// Ordered: longer groups must rewrite before their parts ("eau" before "au").
     private static let phoneticGroups: [(String, String)] = [
         ("eau", "o"), ("au", "o"), ("ph", "f"), ("qu", "k"), ("ck", "k"),
-        ("c", "k"), ("ai", "e"), ("ei", "e"), ("ez", "e"), ("er", "e"),
+        ("c", "k"), ("ai", "e"), ("ei", "e"),
         ("em", "an"), ("en", "an"), ("am", "an"), ("y", "i"), ("w", "v"),
     ]
 

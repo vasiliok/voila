@@ -255,3 +255,37 @@ private let completer = try! Completer.french()
         #expect(completer.misspellings(in: "bon jour à tous").isEmpty)
     }
 }
+
+@Suite struct RealWordTypoTests {
+    @Test(arguments: [("feme", "femme"), ("fame", "femme"), ("Fame", "Femme")])
+    func suggestsCommonWordFirst(typed: String, expected: String) {
+        #expect(completer.suggestions(for: typed).first == expected)
+    }
+
+    @Test(arguments: ["ma feme", "ma fame"])
+    func flagsWordInContext(text: String) throws {
+        let found = try #require(completer.misspellings(in: text).first)
+        #expect(String(text[found.range]) == String(text.dropFirst(3)))
+        #expect(found.suggestions.first == "femme")
+    }
+
+    @Test(arguments: ["femme", "bonjour", "tisane", "brouette", "citrouille", "Marseille"])
+    func leavesCorrectWordsAlone(word: String) {
+        #expect(completer.suggestions(for: word).isEmpty)
+    }
+
+    @Test func noFalseAlarmsInOrdinaryText() {
+        let text = """
+            Je suis allé au marché avec ma femme pour acheter du pain, des fruits \
+            et un peu de fromage. Il faisait beau, alors nous avons pris le temps \
+            de nous promener le long de la rivière. La boulangerie ferme tard, \
+            mais la pharmacie du quartier ouvre tôt le dimanche.
+            """
+        #expect(completer.misspellings(in: text).map(\.word) == [])
+    }
+
+    @Test func soundKeysTreatDoubledLettersAsSingle() {
+        #expect(Completer.phonetic("femme") == Completer.phonetic("feme"))
+        #expect(Completer.phonetic("ferme") != Completer.phonetic("feme"))
+    }
+}

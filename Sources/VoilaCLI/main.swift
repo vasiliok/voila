@@ -46,11 +46,13 @@ case "restore":
 case "suggest":
     args.removeFirst()
     guard args.count == 1 else { fail(usage) }
-    if completer.isKnown(args[0]) {
+    let suggestions = completer.suggestions(for: args[0])
+    if !suggestions.isEmpty {
+        print(suggestions.joined(separator: "\n"))
+    } else if completer.isKnown(args[0]) {
         print("\(completer.accentuate(args[0])) (known word)")
     } else {
-        let suggestions = completer.suggestions(for: args[0])
-        print(suggestions.isEmpty ? "no suggestions" : suggestions.joined(separator: "\n"))
+        print("no suggestions")
     }
 
 case "-h", "--help":
