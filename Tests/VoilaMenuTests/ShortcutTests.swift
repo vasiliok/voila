@@ -2,7 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 import Foundation
 import Testing
-@testable import AutoFrenchMenu
+@testable import VoilaMenu
 
 private func keyDown(
     _ characters: String, keyCode: Int, modifiers: NSEvent.ModifierFlags

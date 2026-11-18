@@ -1,5 +1,5 @@
 import AppKit
-import AutoFrench
+import Voila
 import ServiceManagement
 import SwiftUI
 
@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             shortcuts = ShortcutStore { fixer.fixSelection() }
         } catch {
             showAlert(
-                "AutoFrench cannot load its dictionary",
+                "Voilà cannot load its dictionary",
                 error.localizedDescription)
             NSApp.terminate(nil)
             return
@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "é"
-        item.button?.toolTip = "AutoFrench"
+        item.button?.toolTip = "Voilà"
 
         let menu = NSMenu()
         menu.addItem(fixItem)
@@ -60,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(loginItem)
         menu.addItem(withTitle: "How to Use…", action: #selector(showHelp), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit AutoFrench",
+        menu.addItem(withTitle: "Quit Voilà",
                      action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for menuItem in menu.items where menuItem.action != #selector(NSApplication.terminate(_:)) {
             menuItem.target = self
@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             let window = NSWindow(
                 contentViewController: NSHostingController(rootView: SettingsView(store: shortcuts)))
-            window.title = "AutoFrench Settings"
+            window.title = "Voilà Settings"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()

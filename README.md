@@ -1,4 +1,4 @@
-# AutoFrench
+# Voilà
 
 Swift library + CLI that fixes French special characters as you type and
 completes words. Type plain ASCII, get proper French:
@@ -31,26 +31,26 @@ swift test   # library: restoration, elision, suggestions; app: shortcuts
 ## Usage
 
 ```sh
-swift run autofrench restore "ca va etre genial"
+swift run voila restore "ca va etre genial"
 # → ça va être génial
 
-swift run autofrench complete ecol -n 5
+swift run voila complete ecol -n 5
 # → école, écoles, écolo, ...
 
-swift run autofrench suggest ajurdui
+swift run voila suggest ajurdui
 # → aujourd'hui, aurai, autrui, ...
 
-swift run autofrench      # interactive: restores each line, suggests for typos
+swift run voila      # interactive: restores each line, suggests for typos
 ```
 
 ## Menu bar app
 
-`AutoFrench.app` sits in the menu bar (an "é" icon) and adds
+`Voilà.app` sits in the menu bar (an "é" icon) and adds
 **Restore French Accents** to the right-click **Services** menu of every app:
 select text, right-click, pick it, and the selection is replaced in place.
 
 ```sh
-scripts/build-app.sh            # → build/AutoFrench.app
+scripts/build-app.sh            # → build/Voilà.app
 scripts/build-app.sh --install  # also copy to ~/Applications and launch
 ```
 
@@ -70,7 +70,7 @@ shortcut) in System Settings → Keyboard → Keyboard Shortcuts → Services �
 As a library:
 
 ```swift
-import AutoFrench
+import Voila
 
 let completer = try Completer.french()
 completer.accentuate("francais")        // "français"

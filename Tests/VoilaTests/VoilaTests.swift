@@ -1,5 +1,5 @@
 import Testing
-@testable import AutoFrench
+@testable import Voila
 
 private let completer = try! Completer.french()
 

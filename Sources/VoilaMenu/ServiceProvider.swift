@@ -1,5 +1,5 @@
 import AppKit
-import AutoFrench
+import Voila
 
 /// Backs the "Restore French Accents" entry that macOS shows in the
 /// right-click Services menu for selected text. The method name must match
@@ -19,7 +19,7 @@ final class ServiceProvider: NSObject {
         error: AutoreleasingUnsafeMutablePointer<NSString>
     ) {
         guard let text = pasteboard.string(forType: .string) else {
-            error.pointee = "AutoFrench: the selection contains no text." as NSString
+            error.pointee = "Voilà: the selection contains no text." as NSString
             return
         }
         pasteboard.clearContents()

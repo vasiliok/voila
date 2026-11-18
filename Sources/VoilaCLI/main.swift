@@ -1,4 +1,4 @@
-import AutoFrench
+import Voila
 import Foundation
 
 func fail(_ message: String) -> Never {
@@ -7,17 +7,17 @@ func fail(_ message: String) -> Never {
 }
 
 let usage = """
-usage: autofrench complete <prefix> [-n N]   ranked completions for a prefix
-       autofrench restore <text...>          restore accents in text
-       autofrench suggest <word>             close matches for a misspelled word
-       autofrench                            interactive mode
+usage: voila complete <prefix> [-n N]   ranked completions for a prefix
+       voila restore <text...>          restore accents in text
+       voila suggest <word>             close matches for a misspelled word
+       voila                            interactive mode
 """
 
 let completer: Completer
 do {
     completer = try Completer.french()
 } catch {
-    fail("autofrench: cannot load dictionary: \(error.localizedDescription)")
+    fail("voila: cannot load dictionary: \(error.localizedDescription)")
 }
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -28,7 +28,7 @@ case "complete":
     var limit = 10
     if let i = args.firstIndex(of: "-n") {
         guard i + 1 < args.count, let n = Int(args[i + 1]), n > 0 else {
-            fail("autofrench: -n expects a positive number\n\(usage)")
+            fail("voila: -n expects a positive number\n\(usage)")
         }
         limit = n
         args.removeSubrange(i...(i + 1))
@@ -60,7 +60,7 @@ case .some:
     fail(usage)
 
 case nil:
-    print("autofrench — tapez du texte sans accents, entrée pour restaurer (exit pour quitter)")
+    print("Voilà — tapez du texte sans accents, entrée pour restaurer (exit pour quitter)")
     while true {
         print("fr> ", terminator: "")
         guard let line = readLine(), line != "exit" else { break }

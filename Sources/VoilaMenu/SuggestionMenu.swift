@@ -1,5 +1,5 @@
 import AppKit
-import AutoFrench
+import Voila
 
 /// A popup menu offering replacements for one unknown word.
 @MainActor

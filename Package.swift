@@ -2,33 +2,33 @@
 import PackageDescription
 
 let package = Package(
-    name: "AutoFrench",
+    name: "Voila",
     platforms: [.macOS(.v13), .iOS(.v16)],
     products: [
-        .library(name: "AutoFrench", targets: ["AutoFrench"]),
-        .executable(name: "autofrench", targets: ["AutoFrenchCLI"]),
-        .executable(name: "AutoFrenchMenu", targets: ["AutoFrenchMenu"]),
+        .library(name: "Voila", targets: ["Voila"]),
+        .executable(name: "voila", targets: ["VoilaCLI"]),
+        .executable(name: "VoilaMenu", targets: ["VoilaMenu"]),
     ],
     targets: [
         .target(
-            name: "AutoFrench",
+            name: "Voila",
             resources: [.copy("Resources/fr_50k.txt")]
         ),
         .executableTarget(
-            name: "AutoFrenchCLI",
-            dependencies: ["AutoFrench"]
+            name: "VoilaCLI",
+            dependencies: ["Voila"]
         ),
         .executableTarget(
-            name: "AutoFrenchMenu",
-            dependencies: ["AutoFrench"]
+            name: "VoilaMenu",
+            dependencies: ["Voila"]
         ),
         .testTarget(
-            name: "AutoFrenchTests",
-            dependencies: ["AutoFrench"]
+            name: "VoilaTests",
+            dependencies: ["Voila"]
         ),
         .testTarget(
-            name: "AutoFrenchMenuTests",
-            dependencies: ["AutoFrenchMenu"]
+            name: "VoilaMenuTests",
+            dependencies: ["VoilaMenu"]
         ),
     ]
 )

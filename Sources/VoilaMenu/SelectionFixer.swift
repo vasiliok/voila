@@ -1,5 +1,5 @@
 import AppKit
-import AutoFrench
+import Voila
 import Carbon.HIToolbox
 
 /// Fixes the selected text of the frontmost app: copies it with a synthetic
@@ -16,7 +16,7 @@ final class SelectionFixer {
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
-    /// Asks macOS for Accessibility permission, which adds AutoFrench to
+    /// Asks macOS for Accessibility permission, which adds Voilà to
     /// the list in System Settings, and opens that panel.
     static func requestTrust() {
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
